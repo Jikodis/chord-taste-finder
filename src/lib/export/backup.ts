@@ -28,9 +28,15 @@ export async function exportBackup(): Promise<BackupFile> {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     items,
-    comparisons: comparisons.map(({ id: _id, ...rest }) => rest),
+    comparisons: comparisons.map(({ id, ...rest }) => {
+      void id
+      return rest
+    }),
     sessions,
-    generated: generated.map(({ id: _id, ...rest }) => rest),
+    generated: generated.map(({ id, ...rest }) => {
+      void id
+      return rest
+    }),
     settings: { ...DEFAULT_SETTINGS, ...((settingsRow?.value as Partial<AppSettings>) ?? {}) },
   }
 }
