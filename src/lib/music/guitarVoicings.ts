@@ -112,6 +112,25 @@ export function guitarVoicings(rootPc: number, qualityId: string): Voicing[] {
   const quality = getQuality(qualityId)
   if (!quality) throw new Error(`Unknown chord quality: ${qualityId}`)
   const chordPcs = new Set(quality.intervals.map((i) => (rootPc + i) % 12))
-  const found = search(chordPcs, chordPcs)
-  return found.map((f) => toVoicing(f, chordPcs, rootPc))
+
+  // Relaxation ladder: full set → drop perfect 5th → also drop root.
+  // Only a *perfect* fifth (interval 7) is omittable; altered fifths are defining tones.
+  const hasPerfectFifth = quality.intervals.some((i) => i % 12 === 7)
+  const fifthPc = (rootPc + 7) % 12
+  const ladder: Array<Set<number>> = [chordPcs]
+  if (hasPerfectFifth) {
+    const noFifth = new Set([...chordPcs].filter((pc) => pc !== fifthPc))
+    ladder.push(noFifth)
+    ladder.push(new Set([...noFifth].filter((pc) => pc !== rootPc)))
+  } else {
+    ladder.push(new Set([...chordPcs].filter((pc) => pc !== rootPc)))
+  }
+
+  for (const required of ladder) {
+    // Tones outside `required` may still appear (they are real chord tones);
+    // `omitted` reports what is actually absent per shape.
+    const found = search(required, chordPcs)
+    if (found.length > 0) return found.map((f) => toVoicing(f, chordPcs, rootPc))
+  }
+  return []
 }

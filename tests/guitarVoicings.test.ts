@@ -62,3 +62,33 @@ describe('guitarVoicings core search', () => {
     expect(() => guitarVoicings(0, 'nope')).toThrow(/Unknown chord quality/)
   })
 })
+
+describe('omission ladder', () => {
+  it('voices 13sharp11 (7 tones > 6 strings) by dropping the 5th, then root if needed', () => {
+    const voicings = guitarVoicings(0, '13sharp11')
+    expect(voicings.length).toBeGreaterThan(0)
+    for (const v of voicings) {
+      expect(v.omitted.every((o) => o === '5th' || o === 'root')).toBe(true)
+    }
+  })
+
+  it('omitted is truthful: listed tones absent, unlisted tones present', () => {
+    for (const q of ['13sharp11', 'maj13sharp11', '13', 'maj', 'sowhat'] as const) {
+      for (const v of guitarVoicings(0, q)) {
+        const sounded = soundedPcs(v.frets)
+        const pcs = chordPcs(0, q)
+        const fifthPc = 7 // rootPc 0 + perfect fifth
+        if (v.omitted.includes('5th')) expect(sounded.has(fifthPc)).toBe(false)
+        if (v.omitted.includes('root')) expect(sounded.has(0)).toBe(false)
+        const expectedPresent = [...pcs].filter(
+          (pc) => !(v.omitted.includes('5th') && pc === fifthPc) && !(v.omitted.includes('root') && pc === 0)
+        )
+        for (const pc of expectedPresent) expect(sounded.has(pc)).toBe(true)
+      }
+    }
+  })
+
+  it('complete chords stay complete: 4-tone chords have empty omitted', () => {
+    for (const v of guitarVoicings(0, '6sus2')) expect(v.omitted).toEqual([])
+  })
+})
