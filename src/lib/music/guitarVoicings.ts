@@ -92,6 +92,28 @@ function search(required: Set<number>, allowed: Set<number>): Array<Array<number
   return results
 }
 
+/** Lower = easier. Weights are heuristic; ordering contract is what tests pin. */
+function scoreVoicing(frets: Array<number | null>, rootPc: number): number {
+  const fretted = frets.filter((f): f is number => f !== null && f > 0)
+  const soundedMidi = frets
+    .map((f, s) => (f === null ? -1 : OPEN_MIDI[s] + f))
+    .filter((m) => m >= 0)
+  let score = 0
+  if (fretted.length > 0) {
+    score += (Math.max(...fretted) - Math.min(...fretted)) * 4 // hand stretch
+    score += (Math.min(...fretted) - 1) * 2 // low positions are easier to find
+  }
+  score += fretted.length * 2 // fingers down
+  score -= frets.filter((f) => f === 0).length * 2 // open strings are free
+  score -= soundedMidi.length * 3 // prefer fuller voicings
+  const first = frets.findIndex((f) => f !== null)
+  const last = 5 - [...frets].reverse().findIndex((f) => f !== null)
+  for (let s = first; s <= last; s++) if (frets[s] === null) score += 6 // interior mute
+  if (soundedMidi.length > 0 && soundedMidi[0] % 12 !== rootPc) score += 8 // non-root bass
+  score += soundedMidi.filter((m) => m < 43 && m % 12 !== rootPc).length * 4 // muddy low tones
+  return score
+}
+
 function toVoicing(frets: Array<number | null>, chordPcs: Set<number>, rootPc: number): Voicing {
   const sounded = new Set(
     frets.map((f, s) => (f === null ? -1 : (OPEN_MIDI[s] + f) % 12)).filter((pc) => pc >= 0)
@@ -104,7 +126,7 @@ function toVoicing(frets: Array<number | null>, chordPcs: Set<number>, rootPc: n
   omitted.sort() // '5th' before 'root', deterministic
   const fretted = frets.filter((f): f is number => f !== null && f > 0)
   const baseFret = fretted.length > 0 && Math.max(...fretted) > SPAN ? Math.min(...fretted) : 0
-  return { frets, notation: toNotation(frets), baseFret, omitted, score: 0 }
+  return { frets, notation: toNotation(frets), baseFret, omitted, score: scoreVoicing(frets, rootPc) }
 }
 
 /** All valid voicings for the chord. */
@@ -130,7 +152,11 @@ export function guitarVoicings(rootPc: number, qualityId: string): Voicing[] {
     // Tones outside `required` may still appear (they are real chord tones);
     // `omitted` reports what is actually absent per shape.
     const found = search(required, chordPcs)
-    if (found.length > 0) return found.map((f) => toVoicing(f, chordPcs, rootPc))
+    if (found.length > 0) {
+      return found
+        .map((f) => toVoicing(f, chordPcs, rootPc))
+        .sort((a, b) => a.score - b.score || (a.notation < b.notation ? -1 : 1))
+    }
   }
   return []
 }

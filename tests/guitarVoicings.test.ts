@@ -92,3 +92,30 @@ describe('omission ladder', () => {
     for (const v of guitarVoicings(0, '6sus2')) expect(v.omitted).toEqual([])
   })
 })
+
+describe('scoring', () => {
+  it('prefers open-position shapes for the classic open chords', () => {
+    // C, G, E, A major; E, A, D minor — the top voicing must live in open position
+    for (const [pc, q] of [[0, 'maj'], [7, 'maj'], [4, 'maj'], [9, 'maj'], [4, 'min'], [9, 'min'], [2, 'min']] as const) {
+      const top = guitarVoicings(pc, q)[0]
+      expect(top.baseFret).toBe(0)
+      expect(top.frets.filter((f) => f === 0).length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('puts the root in the bass of the top voicing for common qualities', () => {
+    for (const [pc, q] of [[0, 'maj'], [7, 'maj'], [9, 'min'], [2, '7']] as const) {
+      const top = guitarVoicings(pc, q)[0]
+      const bassString = top.frets.findIndex((f) => f !== null)
+      const bassPc = (OPEN_MIDI[bassString] + top.frets[bassString]!) % 12
+      expect(bassPc).toBe(pc)
+    }
+  })
+
+  it('is deterministic: two calls agree, and scores ascend', () => {
+    const a = guitarVoicings(6, 'm7b5')
+    const b = guitarVoicings(6, 'm7b5')
+    expect(a.map((v) => v.notation)).toEqual(b.map((v) => v.notation))
+    for (let i = 1; i < a.length; i++) expect(a[i].score).toBeGreaterThanOrEqual(a[i - 1].score)
+  })
+})
