@@ -22,7 +22,7 @@ export default function KeyboardDiagram({ midi, className = '' }: { midi: number
     <svg
       viewBox={`0 0 ${width} ${whiteH}`}
       className={className}
-      style={{ width: Math.min(width * 1.6, 320) }}
+      style={{ width: Math.min(width * 1.6, 320), maxWidth: '100%' }}
       role="img"
       aria-label={`Keyboard diagram with ${midi.length} pressed keys`}
     >

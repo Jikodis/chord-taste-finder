@@ -43,10 +43,12 @@ export default function CheatSheetPage() {
   const pc = keyPc ?? 0
   const scales = topScales(rows.key ?? [])
   const qualities = topQualities(rows.quality ?? [])
-  // Saved progressions first (explicit bookmarks), then top-rated, deduped
+  // Saved progressions first (explicit bookmarks), then top-rated. Dedupe by template
+  // name, not id: the same progression rated in two keys collapses to one card once
+  // everything is transposed into the chosen key.
   const progs: ProgressionDef[] = []
   for (const p of [...saved, ...topProgressions(rows.progression ?? []).map((t) => t.progression)]) {
-    if (!progs.some((x) => x.id === p.id)) progs.push(p)
+    if (!progs.some((x) => x.name === p.name)) progs.push(p)
   }
 
   return (
