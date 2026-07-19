@@ -5,6 +5,8 @@ import { useAppStore } from '@/lib/store'
 import { getLifetimeStats, resetAll, type AppSettings } from '@/lib/db/storage'
 import { exportBackup, importBackup, validateBackup, downloadJson, type BackupFile, type BackupPreview } from '@/lib/export/backup'
 import { exportReminder } from '@/lib/tiersView'
+import { playChord, stop } from '@/lib/audio/engine'
+import { realizeChord } from '@/lib/music/realize'
 
 const INSTRUMENTS: Array<{ id: AppSettings['instrument']; label: string; note: string }> = [
   { id: 'piano', label: 'Piano', note: 'Recommended — clearest for hearing voicing differences' },
@@ -20,12 +22,28 @@ export default function SettingsPage() {
   const [pending, setPending] = useState<{ file: BackupFile; preview: BackupPreview } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [previewing, setPreviewing] = useState<AppSettings['instrument'] | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!ready) return
     void getLifetimeStats().then((s) => setTotal(s.totalComparisons))
   }, [ready])
+
+  useEffect(() => {
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current)
+      stop()
+    }
+  }, [])
+
+  const preview = async (id: AppSettings['instrument']) => {
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+    setPreviewing(id)
+    await playChord(realizeChord(0, 'maj'), id) // same phrase for all — compare timbre only
+    previewTimer.current = setTimeout(() => setPreviewing(null), 1700)
+  }
 
   const reminder = exportReminder(total, settings.lastExportAt, settings.comparisonsAtLastExport)
 
@@ -88,6 +106,16 @@ export default function SettingsPage() {
                 <div className="text-sm font-medium">{inst.label}</div>
                 <div className="text-xs text-muted">{inst.note}</div>
               </div>
+              <button
+                onClick={(e) => {
+                  e.preventDefault() // don't let the label flip the radio
+                  void preview(inst.id)
+                }}
+                className="ml-auto rounded-lg bg-surface px-3 py-2 text-sm transition hover:bg-accent-soft"
+                aria-label={`Preview ${inst.label} sound`}
+              >
+                {previewing === inst.id ? '♪' : '▶'}
+              </button>
             </label>
           ))}
         </div>
