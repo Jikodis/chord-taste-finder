@@ -129,8 +129,7 @@ function toVoicing(frets: Array<number | null>, chordPcs: Set<number>, rootPc: n
   return { frets, notation: toNotation(frets), baseFret, omitted, score: scoreVoicing(frets, rootPc) }
 }
 
-/** All valid voicings for the chord. */
-export function guitarVoicings(rootPc: number, qualityId: string): Voicing[] {
+function computeVoicings(rootPc: number, qualityId: string): Voicing[] {
   const quality = getQuality(qualityId)
   if (!quality) throw new Error(`Unknown chord quality: ${qualityId}`)
   const chordPcs = new Set(quality.intervals.map((i) => (rootPc + i) % 12))
@@ -159,4 +158,17 @@ export function guitarVoicings(rootPc: number, qualityId: string): Voicing[] {
     }
   }
   return []
+}
+
+const memo = new Map<string, Voicing[]>()
+
+/** All valid voicings for the chord, easiest first. Memoized: the UI calls this per rendered diagram. */
+export function guitarVoicings(rootPc: number, qualityId: string): Voicing[] {
+  const key = `${rootPc}:${qualityId}`
+  let cached = memo.get(key)
+  if (!cached) {
+    cached = computeVoicings(rootPc, qualityId)
+    memo.set(key, cached)
+  }
+  return cached
 }

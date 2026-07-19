@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { guitarVoicings, OPEN_MIDI } from '@/lib/music/guitarVoicings'
-import { getQuality } from '@/lib/music/chords'
+import { getQuality, CHORD_QUALITIES } from '@/lib/music/chords'
 
 /** Pitch classes actually sounded by a voicing. */
 function soundedPcs(frets: Array<number | null>): Set<number> {
@@ -117,5 +117,38 @@ describe('scoring', () => {
     const b = guitarVoicings(6, 'm7b5')
     expect(a.map((v) => v.notation)).toEqual(b.map((v) => v.notation))
     for (let i = 1; i < a.length; i++) expect(a[i].score).toBeGreaterThanOrEqual(a[i - 1].score)
+  })
+})
+
+describe('full catalog sweep — the definition of done', () => {
+  it('every quality × every root yields a correct, playable top voicing', () => {
+    const started = performance.now()
+    for (const q of CHORD_QUALITIES) {
+      for (let rootPc = 0; rootPc < 12; rootPc++) {
+        const voicings = guitarVoicings(rootPc, q.id)
+        expect(voicings.length, `${q.id} @ ${rootPc} found no voicing`).toBeGreaterThan(0)
+        const top = voicings[0]
+        const pcs = chordPcs(rootPc, q.id)
+        const sounded = soundedPcs(top.frets)
+        // nothing foreign
+        for (const pc of sounded) expect(pcs.has(pc), `${q.id} @ ${rootPc}: foreign tone ${pc} in ${top.notation}`).toBe(true)
+        // everything non-omitted present
+        const fifthPc = (rootPc + 7) % 12
+        for (const pc of pcs) {
+          const excused =
+            (top.omitted.includes('5th') && pc === fifthPc) || (top.omitted.includes('root') && pc === rootPc)
+          if (!excused) expect(sounded.has(pc), `${q.id} @ ${rootPc}: missing tone ${pc} in ${top.notation}`).toBe(true)
+        }
+        expect(top.omitted.every((o) => o === '5th' || o === 'root')).toBe(true)
+        const fretted = top.frets.filter((f): f is number => f !== null && f > 0)
+        if (fretted.length > 0) expect(Math.max(...fretted) - Math.min(...fretted)).toBeLessThanOrEqual(3)
+      }
+    }
+    const elapsed = performance.now() - started
+    expect(elapsed, `sweep took ${Math.round(elapsed)}ms`).toBeLessThan(4000)
+  }, 30_000)
+
+  it('memoizes: repeat call returns the identical array instance', () => {
+    expect(guitarVoicings(3, 'maj9')).toBe(guitarVoicings(3, 'maj9'))
   })
 })
