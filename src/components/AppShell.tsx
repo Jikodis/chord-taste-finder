@@ -8,12 +8,18 @@ import { useAppStore } from '@/lib/store'
 const NAV = [
   { href: '/', label: 'Home', icon: '⌂' },
   { href: '/compare', label: 'Compare', icon: '⚖' },
+  { href: '/history', label: 'History', icon: '↺' },
   { href: '/tiers', label: 'Tiers', icon: '▤' },
   { href: '/progress', label: 'Progress', icon: '◔' },
   { href: '/generator', label: 'Generate', icon: '✦' },
   { href: '/cheatsheet', label: 'Cheat Sheet', icon: '▦' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ]
+
+/** Bottom nav has room for five; History is reached from the dashboard's recent list. */
+const MOBILE_NAV = ['/', '/compare', '/tiers', '/progress', '/generator'].map(
+  (href) => NAV.find((n) => n.href === href)!
+)
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -57,7 +63,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Bottom nav (mobile) */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-borderc bg-surface py-2 md:hidden">
-        {NAV.slice(0, 5).map((n) => (
+        {MOBILE_NAV.map((n) => (
           <Link
             key={n.href}
             href={n.href}

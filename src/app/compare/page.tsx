@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/store'
-import { getItemStats, recordComparison } from '@/lib/db/storage'
+import { getItemStats, recordComparison, deleteComparison } from '@/lib/db/storage'
 import { selectMatchup, CONVERGED_N } from '@/lib/ranking/matchup'
 import { catalogItem } from '@/lib/items/lookup'
 import { DIMENSION_LABELS, type CatalogItem, type Dimension } from '@/lib/items/catalog'
@@ -20,6 +20,7 @@ interface Matchup {
 }
 
 interface LastResult {
+  comparisonId: number
   winner: string
   loser: string
   delta: number
@@ -136,7 +137,12 @@ function ArenaInner() {
         dimension: matchup.dimension,
         sessionId,
       })
-      setLast({ winner: winner.label, loser: loser.label, delta: Math.round(res.newWinnerRating - 1500) })
+      setLast({
+        comparisonId: res.comparisonId,
+        winner: winner.label,
+        loser: loser.label,
+        delta: Math.round(res.newWinnerRating - 1500),
+      })
       const newSession = sessionCount + 1
       setSessionCount(newSession)
       if (!settings.calibrated && newSession >= CALIBRATION_ROUNDS) {
@@ -149,10 +155,23 @@ function ArenaInner() {
     [matchup, busy, sessionId, sessionCount, settings.calibrated, updateSettings, loadNext, searchParams, router]
   )
 
+  /** Undo the vote just cast, leaving the current matchup in place. */
+  const undoLast = useCallback(async () => {
+    if (!last || busy) return
+    setBusy(true)
+    await deleteComparison(last.comparisonId)
+    const stats = await getItemStats()
+    setTotalCount(stats.reduce((s, i) => s + i.comparisons, 0) / 2)
+    setSessionCount((c) => Math.max(0, c - 1))
+    setLast(null)
+    setBusy(false)
+  }, [last, busy])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'a' || e.key === 'ArrowLeft') void choose('A')
       if (e.key === 'b' || e.key === 'ArrowRight') void choose('B')
+      if (e.key === 'u') void undoLast()
       if (e.key === '1') void play('A')
       if (e.key === '2') void play('B')
       if (e.key === ' ') {
@@ -162,7 +181,7 @@ function ArenaInner() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [choose, play])
+  }, [choose, play, undoLast])
 
   if (!matchup) {
     return <div className="py-24 text-center text-muted">Preparing your first matchup…</div>
@@ -182,7 +201,7 @@ function ArenaInner() {
         </div>
         <h1 className="mt-1 text-xl font-bold">Which do you prefer?</h1>
         <p className="mt-1 text-xs text-muted">
-          Listen to both, then choose. Keys: 1/2 to play, A/B (or ←/→) to pick, space to play both.
+          Listen to both, then choose. Keys: 1/2 to play, A/B (or ←/→) to pick, space to play both, U to undo.
         </p>
       </header>
 
@@ -221,8 +240,17 @@ function ArenaInner() {
       </div>
 
       {last && (
-        <div className="rounded-lg bg-surface p-3 text-center text-sm text-muted">
-          <span className="text-foreground">{last.winner}</span> beat {last.loser}
+        <div className="flex items-center justify-center gap-3 rounded-lg bg-surface p-3 text-center text-sm text-muted">
+          <span>
+            <span className="text-foreground">{last.winner}</span> beat {last.loser}
+          </span>
+          <button
+            onClick={() => void undoLast()}
+            disabled={busy}
+            className="rounded bg-surface-2 px-2 py-1 text-xs transition hover:bg-accent-soft disabled:opacity-40"
+          >
+            Undo (u)
+          </button>
         </div>
       )}
 

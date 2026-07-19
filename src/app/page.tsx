@@ -127,7 +127,12 @@ export default function Dashboard() {
             </ul>
           </section>
           <section className="rounded-xl bg-surface p-5">
-            <h2 className="mb-3 font-semibold">Recent activity</h2>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="font-semibold">Recent activity</h2>
+              <Link href="/history" className="text-xs text-accent hover:underline">
+                Undo or edit votes →
+              </Link>
+            </div>
             <ul className="space-y-2 text-sm text-muted">
               {recent.map((r, i) => (
                 <li key={i}>{r}</li>

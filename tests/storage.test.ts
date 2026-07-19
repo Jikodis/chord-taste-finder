@@ -10,6 +10,10 @@ import {
   saveSettings,
   getProgress,
   resetAll,
+  getRecentComparisons,
+  getLifetimeStats,
+  deleteComparison,
+  updateComparisonWinner,
   REFIT_EVERY,
 } from '@/lib/db/storage'
 import { exportBackup, importBackup, validateBackup } from '@/lib/export/backup'
@@ -54,6 +58,21 @@ describe('recordComparison', () => {
     expect(aAfter.lastComparedAt).toBeGreaterThan(0)
   })
 
+  it('returns the id of the row it wrote, so callers can undo it', async () => {
+    const stats = await getItemStats('quality')
+    const res = await recordComparison({
+      aId: stats[0].itemId,
+      bId: stats[1].itemId,
+      winnerId: stats[0].itemId,
+      dimension: 'quality',
+      sessionId: 's1',
+    })
+    const [row] = await getRecentComparisons(1)
+    expect(res.comparisonId).toBe(row.id)
+    await deleteComparison(res.comparisonId)
+    expect(await getRecentComparisons(10)).toHaveLength(0)
+  })
+
   it(`runs a Bradley-Terry refit every ${REFIT_EVERY} comparisons`, async () => {
     const stats = await getItemStats('quality')
     let refits = 0
@@ -70,6 +89,104 @@ describe('recordComparison', () => {
       if (res.refitRan) refits++
     }
     expect(refits).toBe(1)
+  })
+})
+
+describe('undoing and editing past votes', () => {
+  it('deleteComparison returns the two items to their untouched state', async () => {
+    const stats = await getItemStats('quality')
+    const [a, b] = stats
+    await recordComparison({
+      aId: a.itemId,
+      bId: b.itemId,
+      winnerId: a.itemId,
+      dimension: 'quality',
+      sessionId: 's1',
+    })
+    const [row] = await getRecentComparisons(1)
+    await deleteComparison(row.id!)
+
+    const after = await getItemStats('quality')
+    for (const id of [a.itemId, b.itemId]) {
+      const s = after.find((x) => x.itemId === id)!
+      expect(s.rating).toBeCloseTo(INITIAL_ELO)
+      expect(s.comparisons).toBe(0)
+    }
+    expect(await getRecentComparisons(10)).toHaveLength(0)
+  })
+
+  it('deleteComparison replays history exactly as if the vote never happened', async () => {
+    const ids = (await getItemStats('quality')).slice(0, 3).map((s) => s.itemId)
+    const vote1 = { aId: ids[0], bId: ids[1], winnerId: ids[0] }
+    const doomed = { aId: ids[1], bId: ids[2], winnerId: ids[1] }
+    const vote3 = { aId: ids[0], bId: ids[2], winnerId: ids[2] }
+    const ctx = { dimension: 'quality' as const, sessionId: 's1' }
+
+    for (const v of [vote1, doomed, vote3]) await recordComparison({ ...v, ...ctx })
+    const rows = await getRecentComparisons(10)
+    const doomedRow = rows.find((r) => r.aId === doomed.aId && r.bId === doomed.bId)!
+    await deleteComparison(doomedRow.id!)
+    const afterDelete = await getItemStats('quality')
+
+    // A pristine DB that only ever saw the two surviving votes
+    setDbForTesting(createDb(`test-${++dbCounter}`))
+    await ensureSeeded()
+    for (const v of [vote1, vote3]) await recordComparison({ ...v, ...ctx })
+    const expected = await getItemStats('quality')
+
+    for (const id of ids) {
+      expect(afterDelete.find((s) => s.itemId === id)!.rating).toBeCloseTo(
+        expected.find((s) => s.itemId === id)!.rating,
+        6
+      )
+      expect(afterDelete.find((s) => s.itemId === id)!.comparisons).toBe(
+        expected.find((s) => s.itemId === id)!.comparisons
+      )
+    }
+  })
+
+  it('updateComparisonWinner flips who gained rating', async () => {
+    const stats = await getItemStats('quality')
+    const [a, b] = stats
+    await recordComparison({
+      aId: a.itemId,
+      bId: b.itemId,
+      winnerId: a.itemId,
+      dimension: 'quality',
+      sessionId: 's1',
+    })
+    const [row] = await getRecentComparisons(1)
+    await updateComparisonWinner(row.id!, b.itemId)
+
+    const after = await getItemStats('quality')
+    expect(after.find((s) => s.itemId === b.itemId)!.rating).toBeGreaterThan(INITIAL_ELO)
+    expect(after.find((s) => s.itemId === a.itemId)!.rating).toBeLessThan(INITIAL_ELO)
+    // Still exactly one comparison, now recorded the other way round
+    const rowsAfter = await getRecentComparisons(10)
+    expect(rowsAfter).toHaveLength(1)
+    expect(rowsAfter[0].winnerId).toBe(b.itemId)
+    expect(after.find((s) => s.itemId === a.itemId)!.comparisons).toBe(1)
+  })
+
+  it('deleteComparison decrements the session count', async () => {
+    const stats = await getItemStats('quality')
+    await recordComparison({
+      aId: stats[0].itemId,
+      bId: stats[1].itemId,
+      winnerId: stats[0].itemId,
+      dimension: 'quality',
+      sessionId: 's1',
+    })
+    await recordComparison({
+      aId: stats[0].itemId,
+      bId: stats[2].itemId,
+      winnerId: stats[0].itemId,
+      dimension: 'quality',
+      sessionId: 's1',
+    })
+    const [latest] = await getRecentComparisons(1)
+    await deleteComparison(latest.id!)
+    expect((await getLifetimeStats()).totalComparisons).toBe(1)
   })
 })
 
